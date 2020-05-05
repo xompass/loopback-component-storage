@@ -1,4 +1,6 @@
-Copyright (c) IBM Corp. 2013,2017. All Rights Reserved.
+Original work Copyright (c) IBM Corp. 2013,2017. All Rights Reserved.
+Modified work Copyright (C) 2020 Xompass.
+
 Node module: loopback-component-storage
 This project is licensed under the Artistic License 2.0, full text below.
 
