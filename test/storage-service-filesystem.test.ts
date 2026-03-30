@@ -43,6 +43,33 @@ test("StorageService supports filesystem roundtrips without pkgcloud", async () 
   }
 });
 
+test("StorageService uploadStream forwards contentType metadata", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lb-storage-service-content-type-"));
+  const service = new StorageService({
+    provider: "filesystem",
+    root,
+  });
+
+  try {
+    await service.createContainer({ name: "docs" });
+
+    const writer = service.uploadStream("docs", "avatar.jpg", {
+      contentType: "image/jpeg",
+    });
+    writer.end("binary-ish");
+
+    const [storedFile] = await once(writer, "success");
+
+    expect(storedFile).toMatchObject({
+      container: "docs",
+      name: "avatar.jpg",
+      type: "image/jpeg",
+    });
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("StorageService supports nested filesystem paths", async () => {
   const root = await mkdtemp(join(tmpdir(), "lb-storage-service-nested-"));
   const service = new StorageService({

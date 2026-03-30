@@ -313,6 +313,9 @@ export class S3Provider implements StorageProvider {
       new GetObjectCommand({
         Bucket: options.container,
         Key: options.remote,
+        ResponseCacheControl: options.responseCacheControl,
+        ResponseContentEncoding: options.responseContentEncoding,
+        ResponseContentType: options.responseContentType,
       }),
       expiresIn ? { expiresIn } : undefined,
     );

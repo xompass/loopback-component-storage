@@ -8,7 +8,7 @@ vi.mock("@aws-sdk/s3-request-presigner", () => ({
   getSignedUrl: getSignedUrlMock,
 }));
 
-import { HeadObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 
 import { S3Provider } from "../src/providers/s3";
@@ -57,6 +57,30 @@ test("getSignedUrl can skip validation before signing", async () => {
   expect(url).toBe("https://example.com/download");
   expect(send).not.toHaveBeenCalled();
   expect(getSignedUrlMock).toHaveBeenCalledTimes(1);
+});
+
+test("getSignedUrl forwards response header overrides to the presigned request", async () => {
+  const provider = new S3Provider({
+    provider: "s3",
+    region: "us-east-1",
+  });
+  const send = vi.fn(async () => ({}));
+
+  (provider as unknown as { client: { send: typeof send } }).client = { send };
+
+  await provider.getSignedUrl({
+    container: "docs",
+    remote: "reports/daily/summary.json.gz",
+    responseCacheControl: "public, max-age=600",
+    responseContentEncoding: "gzip",
+    responseContentType: "application/json",
+  });
+
+  const signedCommand = getSignedUrlMock.mock.calls[0]?.[1];
+  expect(signedCommand).toBeInstanceOf(GetObjectCommand);
+  expect(signedCommand.input.ResponseCacheControl).toBe("public, max-age=600");
+  expect(signedCommand.input.ResponseContentEncoding).toBe("gzip");
+  expect(signedCommand.input.ResponseContentType).toBe("application/json");
 });
 
 test("S3Provider forwards client tuning options", async () => {

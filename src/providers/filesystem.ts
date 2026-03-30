@@ -241,6 +241,7 @@ export class FilesystemProvider implements StorageProvider {
       secret,
       options.expiresIn ?? this.config?.signedUrl?.expiresIn ?? DEFAULT_SIGNED_URL_EXPIRES_IN,
       this.config?.signedUrl?.baseUrl,
+      options,
     );
   }
 

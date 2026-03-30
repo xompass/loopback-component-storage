@@ -75,7 +75,7 @@ export default class StorageService {
     return this.client.upload({
       ...pickAwsUploadOptions(options),
       container: container ?? options.container ?? "",
-      contentType: undefined,
+      contentType: options.contentType,
       remote: file ?? "",
     });
   }

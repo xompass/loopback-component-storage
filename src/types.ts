@@ -77,7 +77,13 @@ export interface SignedUrlOptions {
   validateBeforeSign?: boolean;
 }
 
-export interface SignedUrlRequestOptions {
+export interface DownloadResponseOptions {
+  responseCacheControl?: string;
+  responseContentEncoding?: string;
+  responseContentType?: string;
+}
+
+export interface SignedUrlRequestOptions extends DownloadResponseOptions {
   strategy?: SignedUrlStrategy;
 }
 
@@ -124,6 +130,7 @@ export interface StorageUploadOptions extends AwsUploadOptions {
   acl?: AclResolver | ObjectCannedACL | string;
   allowedContentTypes?: AllowedContentTypesResolver | readonly string[];
   container?: string;
+  contentType?: string;
   getFilename?: FilenameResolver;
   maxFieldsSize?: number;
   maxFileSize?: MaxFileSizeResolver | number;
@@ -137,14 +144,14 @@ export interface ProviderUploadRequest extends AwsUploadOptions {
   remote: string;
 }
 
-export interface ProviderDownloadRequest {
+export interface ProviderDownloadRequest extends DownloadResponseOptions {
   container: string;
   end?: number;
   remote: string;
   start?: number;
 }
 
-export interface SignedUrlRequest {
+export interface SignedUrlRequest extends DownloadResponseOptions {
   container: string;
   expiresIn?: number;
   remote: string;

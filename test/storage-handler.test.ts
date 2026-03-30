@@ -762,6 +762,73 @@ test("filesystem signed-url download supports nested files and wildcard params",
   }
 });
 
+test("filesystem signed-url download applies signed response header overrides", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lb-storage-signed-download-headers-"));
+  const provider = new FilesystemProvider({
+    provider: "filesystem",
+    root,
+    signedUrl: {
+      enabled: true,
+      secret: "top-secret",
+    },
+  });
+
+  try {
+    await provider.createContainer({ name: "docs" });
+    await mkdir(join(root, "docs", "reports", "daily"), { recursive: true });
+    await writeFile(
+      join(root, "docs", "reports", "daily", "summary.json.gz"),
+      "compressed payload",
+    );
+
+    const remote = "reports/daily/summary.json.gz";
+    const responseOptions = {
+      responseCacheControl: "public, max-age=600",
+      responseContentEncoding: "gzip",
+      responseContentType: "application/json",
+    };
+    const expires = String(Math.floor(Date.now() / 1000) + 60);
+    const request = createEmptyRequest();
+    request.headers = {};
+    request.params = {
+      container: "docs",
+    };
+    request.query = {
+      expires,
+      file: remote,
+      "response-cache-control": responseOptions.responseCacheControl,
+      "response-content-encoding": responseOptions.responseContentEncoding,
+      "response-content-type": responseOptions.responseContentType,
+      signature: createSignedUrlSignature(
+        "top-secret",
+        "docs",
+        remote,
+        Number(expires),
+        responseOptions,
+      ),
+    };
+    request.url = `/docs/signed-download?file=${encodeURIComponent(remote)}&expires=${expires}`;
+    const response = new MockResponse();
+
+    await new Promise<void>((resolve, reject) => {
+      downloadSigned(provider, request, response, "docs", undefined, (error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+
+    expect(response.contentType).toBe("application/json");
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=600");
+    expect(response.headers.get("Content-Encoding")).toBe("gzip");
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("filesystem signed-url download fails when signature is invalid", async () => {
   const root = await mkdtemp(join(tmpdir(), "lb-storage-invalid-signed-url-"));
   const provider = new FilesystemProvider({
@@ -876,6 +943,62 @@ test("filesystem provider generates signed URLs for custom routes and nested rem
     expect(redirectUrl.searchParams.get("signed-url")).toBeNull();
     expect(redirectUrl.searchParams.get("signature")).toBeTruthy();
     expect(redirectUrl.searchParams.get("expires")).toBeTruthy();
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("filesystem provider signs response header overrides into local signed URLs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lb-storage-custom-signed-url-headers-"));
+  const provider = new FilesystemProvider({
+    provider: "filesystem",
+    root,
+    signedUrl: {
+      enabled: true,
+      secret: "top-secret",
+    },
+  });
+
+  try {
+    await provider.createContainer({ name: "customer-1" });
+
+    const request = createEmptyRequest();
+    request.headers = {
+      host: "api.example.com",
+      "x-forwarded-proto": "https",
+    };
+    request.params = {
+      id: "customer-1",
+      nk: "project-1",
+    };
+    request.query = {
+      date: "2026-03-29",
+      "signed-url": true,
+    };
+    request.url =
+      "/Customers/customer-1/projects/project-1/eventSummariesBySubject?date=2026-03-29&signed-url=true";
+
+    const url = await provider.getSignedUrl({
+      container: "customer-1",
+      remote: "projects/project-1/event-summaries/2026-03-29.json.gz",
+      request,
+      responseCacheControl: "public, max-age=600",
+      responseContentEncoding: "gzip",
+      responseContentType: "application/json",
+      validateBeforeSign: false,
+    });
+
+    expect(url).toBeDefined();
+    const redirectUrl = new URL(url as string);
+    expect(redirectUrl.searchParams.get("response-cache-control")).toBe(
+      "public, max-age=600",
+    );
+    expect(redirectUrl.searchParams.get("response-content-encoding")).toBe(
+      "gzip",
+    );
+    expect(redirectUrl.searchParams.get("response-content-type")).toBe(
+      "application/json",
+    );
   } finally {
     await rm(root, { force: true, recursive: true });
   }

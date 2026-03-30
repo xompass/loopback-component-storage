@@ -28,6 +28,7 @@ import {
   normalizeError,
   pickAwsUploadOptions,
   processDownloadError,
+  resolveDownloadResponseOptions,
   resolveSignedUrlStrategy,
   shouldUseLocalSignedUrl,
   stripPath,
@@ -394,11 +395,16 @@ function downloadInternal(
     remote: fileName,
   };
   const signedUrlConfig = provider.config?.signedUrl;
+  const responseOptions = resolveDownloadResponseOptions(req, options);
+  params.responseCacheControl = responseOptions.responseCacheControl;
+  params.responseContentEncoding = responseOptions.responseContentEncoding;
+  params.responseContentType = responseOptions.responseContentType;
   const signedUrlValidationError = validateSignedDownloadRequest(
     req,
     params.container,
     params.remote,
     signedUrlConfig?.secret,
+    responseOptions,
   );
 
   if (signedUrlValidationError) {
@@ -423,6 +429,7 @@ function downloadInternal(
       expiresIn,
       useLocalSignedUrl,
       signedUrlStrategy,
+      responseOptions,
     ).then(
       (url) => {
         if (!url) {
@@ -481,6 +488,7 @@ export function getSignedUrl(
     provider.config?.signedUrl,
     options?.strategy,
   );
+  const responseOptions = resolveDownloadResponseOptions(req, options);
 
   if (!provider.getSignedUrl) {
     if (!shouldUseLocalSignedUrl(signedUrlStrategy)) {
@@ -499,6 +507,7 @@ export function getSignedUrl(
     provider.config?.signedUrl?.expiresIn,
     shouldUseLocalSignedUrl(signedUrlStrategy),
     signedUrlStrategy,
+    responseOptions,
   ).then(
     (url) => cb(null, url ? { url } : null),
     (error) => cb(processDownloadError(error, targetFile)),
@@ -594,7 +603,17 @@ function pipeDownload(
   const reader = provider.download(params);
   let settled = false;
 
-  res.type(stripPath(fileName));
+  if (params.responseCacheControl) {
+    res.set("Cache-Control", params.responseCacheControl);
+  }
+  if (params.responseContentEncoding) {
+    res.set("Content-Encoding", params.responseContentEncoding);
+  }
+  if (params.responseContentType) {
+    res.type(params.responseContentType);
+  } else {
+    res.type(stripPath(fileName));
+  }
   reader.pipe(res);
 
   reader.once("error", (error) => {
@@ -643,6 +662,7 @@ function resolveSignedUrl(
   expiresIn: number | undefined,
   useLocalSignedUrl: boolean,
   signedUrlStrategy: SignedUrlRequestOptions["strategy"],
+  responseOptions: SignedUrlRequestOptions,
 ): Promise<string | null> {
   if (useLocalSignedUrl) {
     const secret = provider.config?.signedUrl?.secret;
@@ -667,6 +687,7 @@ function resolveSignedUrl(
           secret,
           expiresIn,
           provider.config?.signedUrl?.baseUrl,
+          responseOptions,
         ),
       );
   }
@@ -680,6 +701,9 @@ function resolveSignedUrl(
       ...params,
       expiresIn,
       request: req,
+      responseCacheControl: responseOptions.responseCacheControl,
+      responseContentEncoding: responseOptions.responseContentEncoding,
+      responseContentType: responseOptions.responseContentType,
       strategy: signedUrlStrategy,
     }),
   );

@@ -4,6 +4,7 @@ import { basename } from "node:path";
 
 import type {
   AwsUploadOptions,
+  DownloadResponseOptions,
   HttpError,
   PromiseCallback,
   SignedUrlOptions,
@@ -32,6 +33,12 @@ const STRIPPED_SIGNED_URL_QUERY_PARAMS = new Set([
   "bearer",
   "expires",
   "jwt",
+  "response-cache-control",
+  "response-content-encoding",
+  "response-content-type",
+  "responseCacheControl",
+  "responseContentEncoding",
+  "responseContentType",
   "session",
   "session_id",
   "sessionid",
@@ -210,6 +217,7 @@ export function createSignedUrlSignature(
   container: string,
   remote: string,
   expiresAt: number,
+  responseOptions?: DownloadResponseOptions,
 ): string {
   return createHmac("sha256", secret)
     .update(container)
@@ -217,6 +225,12 @@ export function createSignedUrlSignature(
     .update(remote)
     .update("\n")
     .update(String(expiresAt))
+    .update("\n")
+    .update(responseOptions?.responseCacheControl ?? "")
+    .update("\n")
+    .update(responseOptions?.responseContentEncoding ?? "")
+    .update("\n")
+    .update(responseOptions?.responseContentType ?? "")
     .digest("hex");
 }
 
@@ -226,9 +240,16 @@ export function verifySignedUrlSignature(
   remote: string,
   expiresAt: number,
   signature: string,
+  responseOptions?: DownloadResponseOptions,
 ): boolean {
   const expected = Buffer.from(
-    createSignedUrlSignature(secret, container, remote, expiresAt),
+    createSignedUrlSignature(
+      secret,
+      container,
+      remote,
+      expiresAt,
+      responseOptions,
+    ),
     "utf8",
   );
   const received = Buffer.from(signature, "utf8");
@@ -241,6 +262,7 @@ export function validateSignedDownloadRequest(
   container: string,
   remote: string,
   secret?: string,
+  responseOptions?: DownloadResponseOptions,
 ): HttpError | null {
   if (!secret) {
     return null;
@@ -268,7 +290,14 @@ export function validateSignedDownloadRequest(
   }
 
   if (
-    !verifySignedUrlSignature(secret, container, remote, expiresAt, signatureValue)
+    !verifySignedUrlSignature(
+      secret,
+      container,
+      remote,
+      expiresAt,
+      signatureValue,
+      responseOptions,
+    )
   ) {
     return createInvalidSignedUrlError();
   }
@@ -283,9 +312,16 @@ export function buildSignedLocalDownloadUrl(
   secret: string,
   expiresIn = DEFAULT_SIGNED_URL_EXPIRES_IN,
   baseUrl?: string,
+  responseOptions?: DownloadResponseOptions,
 ): string {
   const expiresAt = Math.floor(Date.now() / 1000) + expiresIn;
-  const signature = createSignedUrlSignature(secret, container, remote, expiresAt);
+  const signature = createSignedUrlSignature(
+    secret,
+    container,
+    remote,
+    expiresAt,
+    responseOptions,
+  );
   const downloadUrl = createRequestScopedUrl(
     request,
     buildDownloadPath(container, remote),
@@ -295,6 +331,24 @@ export function buildSignedLocalDownloadUrl(
   stripUnsafeSignedUrlQueryParams(downloadUrl.searchParams);
   downloadUrl.searchParams.set("file", remote);
   downloadUrl.searchParams.set("expires", String(expiresAt));
+  if (responseOptions?.responseCacheControl) {
+    downloadUrl.searchParams.set(
+      "response-cache-control",
+      responseOptions.responseCacheControl,
+    );
+  }
+  if (responseOptions?.responseContentEncoding) {
+    downloadUrl.searchParams.set(
+      "response-content-encoding",
+      responseOptions.responseContentEncoding,
+    );
+  }
+  if (responseOptions?.responseContentType) {
+    downloadUrl.searchParams.set(
+      "response-content-type",
+      responseOptions.responseContentType,
+    );
+  }
   downloadUrl.searchParams.set("signature", signature);
 
   if (downloadUrl.origin === LOCAL_REQUEST_URL_ORIGIN) {
@@ -330,6 +384,31 @@ export function resolveSignedUrlStrategy(
   return requestOverride ?? signedUrlOptions?.strategy;
 }
 
+export function resolveDownloadResponseOptions(
+  request: StorageRequest | undefined,
+  override?: DownloadResponseOptions,
+): DownloadResponseOptions {
+  return {
+    responseCacheControl:
+      override?.responseCacheControl ??
+      getQueryString(
+        request,
+        "responseCacheControl",
+        "response-cache-control",
+      ),
+    responseContentEncoding:
+      override?.responseContentEncoding ??
+      getQueryString(
+        request,
+        "responseContentEncoding",
+        "response-content-encoding",
+      ),
+    responseContentType:
+      override?.responseContentType ??
+      getQueryString(request, "responseContentType", "response-content-type"),
+  };
+}
+
 function getStringProperty(error: HttpError, property: string): string | undefined {
   const value = (error as unknown as Record<string, unknown>)[property];
   return typeof value === "string" ? value : undefined;
@@ -343,6 +422,20 @@ function getMetadataStatusCode(error: HttpError): number | undefined {
 
   const httpStatusCode = (metadata as Record<string, unknown>).httpStatusCode;
   return typeof httpStatusCode === "number" ? httpStatusCode : undefined;
+}
+
+function getQueryString(
+  request: StorageRequest | undefined,
+  ...names: string[]
+): string | undefined {
+  for (const name of names) {
+    const value = request?.query?.[name];
+    if (typeof value === "string" && value) {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 export function pickAwsUploadOptions(
