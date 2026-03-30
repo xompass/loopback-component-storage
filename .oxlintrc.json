@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["oxc", "typescript", "unicorn", "import", "node", "vitest"],
+  "options": {
+    "denyWarnings": true
+  },
+  "categories": {
+    "correctness": "off",
+    "suspicious": "off",
+    "pedantic": "off",
+    "perf": "off",
+    "style": "off",
+    "restriction": "off",
+    "nursery": "off"
+  },
+  "rules": {
+    "no-var": "error",
+    "no-unused-vars": "warn",
+    "prefer-const": "warn",
+    "no-const-assign": "error",
+    "no-undef": "error",
+    "curly": ["error", "all"]
+  },
+  "env": {
+    "node": true,
+    "es2021": true
+  },
+  "ignorePatterns": [
+    "client/",
+    "dist/",
+    "dist-test/",
+    "node_modules/",
+    ".vitest/"
+  ]
+}
